@@ -1,0 +1,77 @@
+import os
+import sys
+import glob
+import numpy as np
+import librosa
+import soundfile as sf
+from collections import defaultdict
+from tqdm import tqdm
+sys.path.append(os.getcwd())
+import utils
+
+# dtype = sys.argv[1]
+# assert dtype == "demand"
+# seed = int(sys.argv[2])
+location_dict = {
+    "DWASHING": "washroom",
+    "DKITCHEN": "kitchen",
+    "DLIVING": "living room",
+    "NFIELD": "sports field",
+    "NRIVER": "river",
+    "NPARK": "park",
+    "OOFFICE": "office",
+    "OHALLWAY": "hallway",
+    "OMEETING": "meeting",
+    "PSTATION": "subway station",
+    "PCAFETER": "cafeteria",
+    "PRESTO": "restaurant",
+    "STRAFFIC": "traffic intersection",
+    "SPSQUARE": "town square",
+    "SCAFE": "cafe terrace",
+    "TMETRO": "subway",
+    "TBUS": "bus",
+    "TCAR": "car"
+}
+noise_dir="/media/kyunster/ssd1/corpus/DEMAND"
+noise_list = os.listdir(noise_dir)
+sound_dict = dict()
+for kwd in noise_list:
+    if "16k" in kwd:
+        env_keyword = kwd.split("_")[0]
+        location_kwd = location_dict[env_keyword]
+        sound_dict[location_kwd] = glob.glob(os.path.join(noise_dir, kwd, "*", "*.wav"))
+
+msp_path = "/media/kyunster/ssd1/corpus/MSP-Podcast/1.10"
+audio_path = os.path.join(msp_path, "Audios/Audio")
+label_path = os.path.join(msp_path, "Labels", "labels_consensus.csv")
+cur_utts, cur_labs = utils.load_adv_emo_label(label_path, "test")
+clean_wavs = utils.load_audio(audio_path, cur_utts)
+
+
+out_dir="/media/kyunster/ssd1/corpus/MSP-Podcast/DEMAND"
+env_list = list(sound_dict.keys())
+for seed in range(2, 10):
+    os.makedirs(os.path.join(out_dir, str(seed)), exist_ok=True)
+    for clean_idx, clean_wav in tqdm(enumerate(clean_wavs), total=len(clean_wavs)):
+        clean_dur = len(clean_wav)
+        noise_type = np.random.choice(env_list)
+        cur_noise_wav_path = np.random.choice(sound_dict[noise_type])
+        noise_wav, _ = librosa.load(cur_noise_wav_path, sr=16000)
+        noise_dur = len(noise_wav)
+        noise_sidx = np.random.randint(0, noise_dur-clean_dur)
+        noise_eidx = noise_sidx + clean_dur
+        
+        snr = np.random.randint(-5, 6)
+        noise_wav = noise_wav[noise_sidx:noise_eidx]
+        
+        clean_power = np.mean(np.abs(clean_wav))
+        noise_power = np.mean(np.abs(noise_wav))
+        noise_gain = clean_power / (noise_power * (10 ** (snr/10)) )
+        noisy_wav = clean_wav + noise_gain * noise_wav
+    
+        noisy_wav_path = os.path.join(out_dir, str(seed), os.path.basename(cur_utts[clean_idx]))
+        sf.write(noisy_wav_path, noisy_wav, samplerate=16000)
+        
+    
+    
+    
